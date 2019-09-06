@@ -8,7 +8,7 @@ DEPLOYMENT_GROUP = $(stack-name)-deployment-group
 DEPLOYMENTS_BUCKET = $(stack-name)-deployments
 
 # deployment variables
-REVISION := $(shell date --utc +%Y%m%dT%H%M%SZ)
+REVISION := $(shell date +%Y%m%dT%H%M%SZ)
 PACKAGE = $(stack-name)_$(REVISION).tgz
 
 
