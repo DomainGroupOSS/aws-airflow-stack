@@ -10,7 +10,7 @@ pipenv install awscli
 # aws deploy create-deployment-group --deployment-group-name $AIRFLOW_NAME-deployment-group --application-name $AIRFLOW_NAME-deployment-application
 
 
-aws cloudformation create-stack --stack-name $AIRFLOW_NAME --template-body file://aws/cloud-formation-template.yml --capabilities CAPABILITY_IAM --parameters '
+aws cloudformation create-stack --stack-name $AIRFLOW_NAME --template-body file://aws/cf.yml --capabilities CAPABILITY_IAM --parameters '
 [
             {
               "ParameterKey": "KeyPair",
@@ -25,7 +25,35 @@ aws cloudformation create-stack --stack-name $AIRFLOW_NAME --template-body file:
 
             }
           ]
+' --tags '[
+  {
+    "Key": "Application",
+    "Value": "Airflow"
+  },{
+    "Key": "Environment",
+    "Value": "Staging"
+  },{
+    "Key": "Team",
+    "Value": "Data Team"
+  }
+]'
+
+------------------------------
+aws cloudformation update-stack --stack-name $AIRFLOW_NAME --template-body file://aws/cf.yml --capabilities CAPABILITY_IAM --parameters '
+[
+            {
+              "ParameterKey": "KeyPair",
+              "UsePreviousValue": true
+
+            }
+            ,{
+              "ParameterKey": "DbMasterPassword",
+              "UsePreviousValue": true
+            }
+          ]
 '
+
+cd src
 make deploy stack-name=$AIRFLOW_NAME
 
 ```

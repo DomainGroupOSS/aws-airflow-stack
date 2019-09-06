@@ -5,7 +5,7 @@ endif
 # stack logical names
 APPLICATION = $(stack-name)-deployment-application
 DEPLOYMENT_GROUP = $(stack-name)-deployment-group
-DEPLOYMENTS_BUCKET = $(stack-name)-deployments
+DEPLOYMENTS_BUCKET = $(stack-name)-deployments.insights.domain.com.au
 
 # deployment variables
 REVISION := $(shell date +%Y%m%dT%H%M%SZ)
