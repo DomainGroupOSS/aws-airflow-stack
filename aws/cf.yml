@@ -85,11 +85,11 @@ Parameters:
   WorkerInstanceType:
     Description: EC2 instance type to use for the workers.
     Type: String
-    Default: t3.micro
+    Default: t3.nano
   WorkerConcurrency:
     Description: Number of concurrent units per machine.
     Type: Number
-    Default: 1
+    Default: 3
   MinGroupSize:
     Description: The minimum number of active worker instances.
     Type: Number
@@ -97,7 +97,7 @@ Parameters:
   MaxGroupSize:
     Description: The maximum number of active worker instances.
     Type: Number
-    Default: 10
+    Default: 40
   ShrinkThreshold:
     Description: >-
       The timeout (in seconds, multiple of 60) after which the queue staying
@@ -512,7 +512,7 @@ Resources:
         - Name: StackName
           Value: !Ref 'AWS::StackName'
       Statistic: Average
-      Period: 300
+      Period: 60
       EvaluationPeriods: 1
       Threshold: !Ref ShrinkThreshold
       ComparisonOperator: LessThanOrEqualToThreshold
@@ -527,7 +527,7 @@ Resources:
         - Name: StackName
           Value: !Ref 'AWS::StackName'
       Statistic: Average
-      Period: 300
+      Period: 60
       EvaluationPeriods: 1
       Threshold: !Ref GrowthThreshold
       ComparisonOperator: GreaterThanOrEqualToThreshold
@@ -545,7 +545,7 @@ Resources:
       AdjustmentType: ChangeInCapacity
       PolicyType: SimpleScaling
       ScalingAdjustment: 1
-      Cooldown: '600'
+      Cooldown: '90'
       AutoScalingGroupName: !Ref AutoScalingGroup
   EfsFileSystem:
     Type: 'AWS::EFS::FileSystem'
