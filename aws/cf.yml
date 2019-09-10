@@ -85,7 +85,7 @@ Parameters:
   WorkerInstanceType:
     Description: EC2 instance type to use for the workers.
     Type: String
-    Default: t3.small
+    Default: t3.micro
   WorkerConcurrency:
     Description: Number of concurrent units per machine.
     Type: Number
@@ -286,14 +286,27 @@ Resources:
         - Granularity: 1Minute
       VPCZoneIdentifier:
         - !Ref StackSubnet
-  # AutoScalingHook:
-  #   Type: 'AWS::AutoScaling::LifecycleHook'
-  #   Properties:
-  #     AutoScalingGroupName: !Ref AutoScalingGroup
-  #     DefaultResult: CONTINUE
-  #     HeartbeatTimeout: 300
-  #     LifecycleHookName: !Sub '${AWS::StackName}-scaling-lfhook'
-  #     LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+        - Key: Application
+          Value: !Ref Application
+          PropagateAtLaunch: true
+        - Key: Team
+          Value: !Ref Team
+          PropagateAtLaunch: true
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-worker'
+          PropagateAtLaunch: true
+  AutoScalingHook:
+    Type: 'AWS::AutoScaling::LifecycleHook'
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      DefaultResult: CONTINUE
+      HeartbeatTimeout: 300
+      LifecycleHookName: !Sub '${AWS::StackName}-scaling-lfhook'
+      LifecycleTransition: 'autoscaling:EC2_INSTANCE_TERMINATING'
   LogsBucket:
     Type: 'AWS::S3::Bucket'
     Properties:

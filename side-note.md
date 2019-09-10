@@ -58,9 +58,46 @@ make deploy stack-name=$AIRFLOW_NAME
 
 ```
 
-```bash
-docker run -it --rm -u 0:0 node:8.9.4-alpine 'npm -g'
 
+# Job queue message format
+
+```json
+{
+  "body": "W1siYWlyZmxvdyBydW4gbXlfZGFnIHJ1bm1lXzQgMjAxOS0wMS0wMVQwMDowMDowMCswMDowMCAtLWxvY2FsIC1zZCAvYWlyZmxvdy9kYWdzL215X2RhZy5weSJdLCB7fSwgeyJjYWxsYmFja3MiOiBudWxsLCAiZXJyYmFja3MiOiBudWxsLCAiY2hhaW4iOiBudWxsLCAiY2hvcmQiOiBudWxsfV0=",
+  "content-encoding": "utf-8",
+  "content-type": "application/json",
+  "headers": {
+    "lang": "py",
+    "task": "airflow.executors.celery_executor.execute_command",
+    "id": "bf65caa0-bb1c-4f9a-bde7-4313d414d6ba",
+    "shadow": null,
+    "eta": null,
+    "expires": null,
+    "group": null,
+    "retries": 0,
+    "timelimit": [
+      null,
+      null
+    ],
+    "root_id": "bf65caa0-bb1c-4f9a-bde7-4313d414d6ba",
+    "parent_id": null,
+    "argsrepr": "['airflow run my_dag runme_4 2019-01-01T00:00:00+00:00 --local -sd /airflow/dags/my_dag.py']",
+    "kwargsrepr": "{}",
+    "origin": "gen13242@ip-10-138-40-125.ap-southeast-2.compute.internal"
+  },
+  "properties": {
+    "correlation_id": "bf65caa0-bb1c-4f9a-bde7-4313d414d6ba",
+    "reply_to": "af3091b5-7da5-37c0-8eb8-50037b4a88dc",
+    "delivery_mode": 2,
+    "delivery_info": {
+      "exchange": "",
+      "routing_key": "airflow-stage-Tasks-1SRC2B5YQV7KS"
+    },
+    "priority": 0,
+    "body_encoding": "base64",
+    "delivery_tag": "6a0c8de4-fe71-46a0-893d-9798b998580f"
+  }
+}
 
 
 ```
