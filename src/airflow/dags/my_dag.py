@@ -5,7 +5,7 @@ from airflow.models import DAG
 from airflow.operators.bash_operator import BashOperator
 
 default_args = {
-    'start_date': datetime(2019, 1, 1),
+    'start_date': datetime(2019, 9, 10),
 }
 
 dag = DAG(

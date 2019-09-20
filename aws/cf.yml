@@ -85,7 +85,7 @@ Parameters:
   WorkerInstanceType:
     Description: EC2 instance type to use for the workers.
     Type: String
-    Default: t3.nano
+    Default: t3.micro
   WorkerConcurrency:
     Description: Number of concurrent units per machine.
     Type: Number
@@ -140,65 +140,6 @@ Parameters:
       - 'True'
     Default: 'False'
 Resources:
-  # VPC:
-  #   Type: 'AWS::EC2::VPC'
-  #   Properties:
-  #     EnableDnsSupport: true
-  #     EnableDnsHostnames: true
-  #     CidrBlock: !Ref VpcCidrBlock
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-vpc'
-  # DummySubnet:
-  #   Type: 'AWS::EC2::Subnet'
-  #   Properties:
-  #     AvailabilityZone: !Sub '${AWS::Region}b'
-  #     CidrBlock: !Ref DummySubnetBlock
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-dummy'
-  #     VpcId: !Ref VPC
-  # StackSubnet:
-  #   Type: 'AWS::EC2::Subnet'
-  #   Properties:
-  #     AvailabilityZone: !Sub '${AWS::Region}a'
-  #     CidrBlock: !Ref StackSubnetBlock
-  #     MapPublicIpOnLaunch: true
-  #     Tags:
-  #       - Key: Name
-  #         Value: !Sub '${AWS::StackName}-subnet'
-  #     VpcId: !Ref VPC
-   
-  # Internet:
-  #   Type: 'AWS::EC2::InternetGateway'
-  #   Properties: {}
-    
-  # Routes:
-  #   Type: 'AWS::EC2::RouteTable'
-  #   Properties:
-  #     VpcId: !Ref VPC
-    
-  # Opener:
-  #   Type: 'AWS::EC2::Route'
-  #   Properties:
-  #     DestinationCidrBlock: 0.0.0.0/0
-  #     GatewayId: !Ref Internet
-  #     RouteTableId: !Ref Routes
-  #   DependsOn:
-  #     - VPCGatewayAttachment
-    
-  # VPCGatewayAttachment:
-  #   Type: 'AWS::EC2::VPCGatewayAttachment'
-  #   Properties:
-  #     InternetGatewayId: !Ref Internet
-  #     VpcId: !Ref VPC
-    
-  # SubnetRouteTableAssociation:
-  #   Type: 'AWS::EC2::SubnetRouteTableAssociation'
-  #   Properties:
-  #     RouteTableId: !Ref Routes
-  #     SubnetId: !Ref StackSubnet
-    
   AirflowScheduler:
     Type: 'AWS::EC2::Instance'
     Properties:
@@ -227,7 +168,7 @@ Resources:
     DependsOn:
       - EfsMountTarget
       - Meta
-  AirflowWebserver:
+  AirflowWebserverTemp:
     Type: 'AWS::EC2::Instance'
     Properties:
       InstanceType: !Ref WebserverInstanceType
@@ -252,9 +193,99 @@ Resources:
             --region ${AWS::Region} \
             --stack ${AWS::StackName} \
             --resource AirflowWebserver
+          echo "Update R53 entry"
+          HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name ${Domain}. | jq -r '.HostedZones[].Id' | awk -F'/' '{print $3}')
+          echo '{
+            "Comment": "Update new IP",
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${AWS::StackName}-webserver.${Domain}",
+                  "Type": "A",
+                  "TTL": 300,
+                  "ResourceRecords": [
+                    {
+                      "Value": "'$HOST'"
+                    }
+                  ]
+                }
+              }
+            ]
+          }' > /tmp/record.json
+          aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --change-batch file:///tmp//tmp/record.json
     DependsOn:
       - EfsMountTarget
       - Meta
+  AirflowWebServerLaunchConfig:
+    Type: 'AWS::AutoScaling::LaunchConfiguration'
+    Properties:
+      ImageId: ami-0b8dea0e70b969adc #hvmgp2
+      InstanceType: !Ref WebserverInstanceType
+      KeyName: !Ref KeyPair
+      SecurityGroups:
+        - !Ref Web
+      IamInstanceProfile: !Ref AirflowProfile
+      UserData: !Base64
+        'Fn::Sub': |
+          #!/bin/bash -xe
+          echo $'TURBINE_MACHINE=WEBSERVER' > /etc/environment
+          /opt/aws/bin/cfn-init -v \
+            --region ${AWS::Region} \
+            --stack ${AWS::StackName} \
+            --resource Meta
+          /opt/aws/bin/cfn-signal -e $?
+            --region ${AWS::Region} \
+            --stack ${AWS::StackName} \
+            --resource AirflowWebserver
+          echo "Update R53 entry"
+          HOSTED_ZONE_ID=$(aws route53 list-hosted-zones-by-name --dns-name ${Domain}. | jq -r '.HostedZones[].Id' | awk -F'/' '{print $3}')
+          echo '{
+            "Comment": "Update new IP",
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "${AWS::StackName}-webserver.${Domain}",
+                  "Type": "A",
+                  "TTL": 300,
+                  "ResourceRecords": [
+                    {
+                      "Value": "'$HOST'"
+                    }
+                  ]
+                }
+              }
+            ]
+          }' > /tmp/record.json
+          aws route53 change-resource-record-sets --hosted-zone-id "$HOSTED_ZONE_ID" --change-batch file:///tmp//tmp/record.json
+    DependsOn:
+      - Meta
+      - EfsMountTarget
+  AirflowWebServerAutoScalingGroup:
+    Type: 'AWS::AutoScaling::AutoScalingGroup'
+    Properties:
+      AutoScalingGroupName: !Sub '${AWS::StackName}-webserver-scaling-group'
+      LaunchConfigurationName: !Ref AirflowWebServerLaunchConfig
+      MinSize: 0
+      MaxSize: 0
+      MetricsCollection:
+        - Granularity: 1Minute
+      VPCZoneIdentifier:
+        - !Ref StackSubnet
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+          PropagateAtLaunch: true
+        - Key: Application
+          Value: !Ref Application
+          PropagateAtLaunch: true
+        - Key: Team
+          Value: !Ref Team
+          PropagateAtLaunch: true
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-webserver'
+          PropagateAtLaunch: true
   AirflowWorkerConfig:
     Type: 'AWS::AutoScaling::LaunchConfiguration'
     Properties:
@@ -286,6 +317,11 @@ Resources:
         - Granularity: 1Minute
       VPCZoneIdentifier:
         - !Ref StackSubnet
+      TerminationPolicies:
+        - OldestLaunchConfiguration
+        - OldestLaunchTemplate
+        - ClosestToNextInstanceHour
+        - AllocationStrategy
       Tags:
         - Key: Environment
           Value: !Ref Environment
@@ -353,7 +389,7 @@ Resources:
               - 'sts:AssumeRole'
       ManagedPolicyArns:
         - 'arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole'
-  Logger:
+  ScalerRole:
     Type: 'AWS::IAM::Role'
     Properties:
       AssumeRolePolicyDocument:
@@ -363,125 +399,80 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: 'sts:AssumeRole'
+      ManagedPolicyArns: ["arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"]
       Policies:
-        - PolicyName: !Sub '${AWS::StackName}-cloudwatch-policy'
+        - PolicyName: !Sub '${AWS::StackName}-scaler-function-policy'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
               - Effect: Allow
                 Resource: '*'
                 Action:
-                  - 'cloudwatch:GetMetric*'
-                  - 'cloudwatch:PutMetricData'
-  Metric:
-    Type: 'AWS::Lambda::Function'
+                  - 'autoscaling:*'
+                  - 'sqs:*'
+  LambdaFunctionLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    DependsOn: "ScaleFunction"
+    Properties: 
+      RetentionInDays: 14
+      LogGroupName: !Join ["", ["/aws/lambda/", !Ref ScaleFunction]]
+  ScaleFunction:
+    Type: AWS::Lambda::Function
     Properties:
-      Runtime: nodejs8.10
-      Handler: index.handler
       Code:
-        ZipFile: !Sub
-          - |
-            var AWS = require('aws-sdk');
-            AWS.config.update({region: '${AWS::Region}'});
-            var cw = new AWS.CloudWatch({apiVersion: '2010-08-01'});
-            const datePlusMinutes = (d, m) => {
-              const _d = new Date(d);
-              _d.setMinutes(d.getMinutes() + m);
-              return _d;
-            };
-            const getMetricAtTime = (ms, m, t) => {
-              const m_idx = ms.MetricDataResults
-                .map(_r => _r.Id)
-                .indexOf(m);
-              const t_idx = ms.MetricDataResults[m_idx]
-                .Timestamps
-                .map(_t => _t.toISOString())
-                .indexOf(t.toISOString());
-              return ms.MetricDataResults[m_idx]
-                .Values[t_idx];
-            };
-            const discount = (ms, m, t1, t2, ws) => {
-              let incs = 0, d = t1;
-              let v1 = getMetricAtTime(ms, m, d), v2;
-              for (let i = 0; d < t2 ; i++) {
-                d = datePlusMinutes(t1, i+1);
-                v2 = getMetricAtTime(ms, m, d);
-                if (v2 > v1) incs += ws[i];
-                v1 = v2;
-              }
-              return incs;
-            };
-            exports.handler = async function(event, context) {
-              let curr = new Date();
-              curr.setMinutes(Math.floor(curr.getMinutes()/5)*5-5);
-              curr.setSeconds(0); curr.setMilliseconds(0);
-              const prev = datePlusMinutes(curr, -5);
-              const back = datePlusMinutes(prev, -5);
-              const metrics = await cw.getMetricData({
-                StartTime: back, EndTime: curr,
-                ScanBy: 'TimestampDescending',
-                MetricDataQueries: [
-                  { Id: 'maxANOMV', MetricStat: {
-                      Metric: { Namespace: 'AWS/SQS',
-                                MetricName: 'ApproximateNumberOfMessagesVisible',
-                                Dimensions: [{ Name: 'QueueName',
-                                              Value: '${queueName}' }]},
-                      Period: 300,
-                      Stat: 'Maximum',
-                      Unit: 'Count' }},
-                  { Id: 'sumNOER', MetricStat: {
-                      Metric: { Namespace: 'AWS/SQS',
-                                MetricName: 'NumberOfEmptyReceives',
-                                Dimensions: [{ Name: 'QueueName',
-                                              Value: '${queueName}' }]},
-                      Period: 300,
-                      Stat: 'Sum',
-                      Unit: 'Count', }},
-                  { Id: 'avgGISI', MetricStat: {
-                      Metric: { Namespace: 'AWS/AutoScaling',
-                                MetricName: 'GroupInServiceInstances',
-                                Dimensions: [{ Name: 'AutoScalingGroupName',
-                                              Value: '${asgName}' }]},
-                      Period: 300,
-                      Stat: 'Average',
-                      Unit: 'None', }},
-                  { Id: 'uGISI', MetricStat: {
-                      Metric: { Namespace: 'AWS/AutoScaling',
-                                MetricName: 'GroupDesiredCapacity',
-                                Dimensions: [{ Name: 'AutoScalingGroupName',
-                                              Value: '${asgName}' }]},
-                      Period: 60,
-                      Stat: 'Average',
-                      Unit: 'None', }},
-              ]}).promise();
-              const ANOMV = getMetricAtTime(metrics, 'maxANOMV', prev);
-              const NOER = getMetricAtTime(metrics, 'sumNOER', prev);
-              const GISI = getMetricAtTime(metrics, 'avgGISI', prev);
-              const ws = [0, 0, 0, 0.1, 0.3, 0.3, 0.3, 0.3, 0.2];
-              const dGISI = discount(metrics, 'uGISI', back, curr, ws);
-              const M = GISI - dGISI;
-              let l;
-              if (M > 0)
-                l = 1 - NOER / (M * 0.098444 * 300);
-              else
-                l = (ANOMV > 0) ? 1.0 : 0.0;
-              await cw.putMetricData({
-                Namespace: 'Turbine',
-                MetricData: [{ MetricName: 'WorkerLoad',
-                              Dimensions: [ { Name: 'StackName',
-                                              Value: '${AWS::StackName}' }],
-                              Timestamp: prev,
-                              Value: (l > 0) ? l : 0,
-                              Unit: 'None' }],
-              }).promise();
-            };
-          - asgName: !Sub '${AWS::StackName}-scaling-group'
-            queueName: !GetAtt
-              - Tasks
-              - QueueName
-      Role: !GetAtt
-        - Logger
-        - Arn
+        ZipFile: |
+            import boto3
+            def lambda_handler(event, context):
+              client = boto3.client('sqs')
+              queue_url = client.get_queue_url(
+                  QueueName='airflow-stage-Tasks-1SRC2B5YQV7KS',
+              )['QueueUrl']
+              # print(queue_url)
+              size = client.get_queue_attributes(
+                AttributeNames=['ApproximateNumberOfMessages'],
+                QueueUrl=queue_url
+              )['Attributes']['ApproximateNumberOfMessages']
+              # print(size)
+              best_size = int(size)//3
+              client = boto3.client('autoscaling')
+              response = client.describe_auto_scaling_groups(
+                  AutoScalingGroupNames=[
+                      'airflow-stage-worker-scaling-group',
+                  ],
+              )['AutoScalingGroups']
+              asg = response[0]
+              if best_size > int(asg['MaxSize']):
+                best_size = int(asg['MaxSize'])
+              current_size = int(asg['DesiredCapacity'])
+              if best_size == current_size:
+                print("Current size already are desired: ", best_size, ", nothing to do.")
+                return {}
+              if best_size != 0 and best_size < current_size: # need to scale in
+                if current_size - best_size < 2: # only scale in more than 1 instance. This is to make the  scale down more stable
+                  print("Won't scale in simply for one instances. Current:", asg['DesiredCapacity'], "Desired:", size)
+                  return {}
+              print("Adjusting desired ASG size to: ", best_size, ", existing size: ", current_size)
+              client.set_desired_capacity(
+                  AutoScalingGroupName='airflow-stage-worker-scaling-group',
+                  DesiredCapacity=best_size,
+                  HonorCooldown=False
+              )
+              return {}
+
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt ScalerRole.Arn
+      Timeout: "30"
+  WebDNSRecord: # place holder for easy management
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: !Sub '${Domain}.'
+      Comment: DNS name for my web server
+      Name: !Sub '${AWS::StackName}-webserver.${Domain}'
+      Type: A
+      TTL: '900'
+      ResourceRecords:
+      - 0.0.0.0 # initially set as 0
   Timer:
     Type: 'AWS::Events::Rule'
     Properties:
@@ -489,13 +480,13 @@ Resources:
       State: ENABLED
       Targets:
         - Arn: !GetAtt
-            - Metric
+            - ScaleFunction
             - Arn
           Id: TargetFunction
   Invoke:
     Type: 'AWS::Lambda::Permission'
     Properties:
-      FunctionName: !Ref Metric
+      FunctionName: !Ref ScaleFunction
       Action: 'lambda:InvokeFunction'
       Principal: events.amazonaws.com
       SourceArn: !GetAtt
@@ -816,7 +807,8 @@ Resources:
                 if [ "$TURBINE_MACHINE" == "SCHEDULER" ]
                 then exec airflow scheduler
                 elif [ "$TURBINE_MACHINE" == "WEBSERVER" ]
-                then exec airflow webserver
+                then
+                  exec airflow webserver
                 elif [ "$TURBINE_MACHINE" == "WORKER" ]
                 then exec airflow worker
                 else echo "TURBINE_MACHINE value unknown" && exit 1
@@ -971,6 +963,7 @@ Resources:
                 then echo "Deployment pending, deferring service start"
                 else systemctl start airflow
                 fi
+
         metahup:
           files:
             /etc/cfn/cfn-hup.conf:

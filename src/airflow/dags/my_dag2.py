@@ -5,7 +5,7 @@ from airflow.models import DAG
 from airflow.operators.bash_operator import BashOperator
 
 default_args = {
-    'start_date': datetime(2019, 1, 1),
+    'start_date': datetime(2019, 9, 10),
 }
 
 dag = DAG(
@@ -14,7 +14,7 @@ dag = DAG(
     schedule_interval='50 * * * *',
 )
 
-for i in range(3):
+for i in range(2):
     task = BashOperator(
         task_id='runme_' + str(i),
         bash_command='echo "{{ task_instance_key_str }}" && sleep 300 && echo "done"',
