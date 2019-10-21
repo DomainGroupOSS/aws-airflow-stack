@@ -37,7 +37,47 @@ aws cloudformation create-stack --stack-name $AIRFLOW_NAME --template-body file:
     "Value": "Data Team"
   }
 ]'
-
+# prod
+aws cloudformation create-stack --stack-name $AIRFLOW_NAME --template-body file://aws/cf.yml --capabilities CAPABILITY_IAM --parameters '
+[
+            {
+              "ParameterKey": "KeyPair",
+              "ParameterValue": "dataproduction-ap-southeast-2",
+              "UsePreviousValue": true
+            },{
+              "ParameterKey": "DbMasterPassword",
+              "ParameterValue": "cheneyBlob456!!",
+              "UsePreviousValue": true
+            },{
+              "ParameterKey": "VPC",
+              "ParameterValue": "vpc-0a43d46c03c541975",
+              "UsePreviousValue": true
+            },{
+              "ParameterKey": "VpcCidrBlock",
+              "ParameterValue": "10.138.0.0/20",
+              "UsePreviousValue": true
+            },{
+              "ParameterKey": "StackSubnet",
+              "ParameterValue": "subnet-04310bfea2a0ed5f2",
+              "UsePreviousValue": true
+            },{
+              "ParameterKey": "DBSubnets",
+              "ParameterValue": "subnet-04310bfea2a0ed5f2,subnet-041b2df843e7d398c",
+              "UsePreviousValue": true
+            }
+          ]
+' --tags '[
+  {
+    "Key": "Application",
+    "Value": "Airflow"
+  },{
+    "Key": "Environment",
+    "Value": "Production"
+  },{
+    "Key": "Team",
+    "Value": "Data Team"
+  }
+]'
 ------------------------------
 aws cloudformation update-stack --stack-name $AIRFLOW_NAME --template-body file://aws/cf.yml --capabilities CAPABILITY_IAM --parameters '
 [
